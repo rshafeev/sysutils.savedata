@@ -1,0 +1,24 @@
+{
+	"source" : {
+
+		files : {
+			include : [
+				"/home"
+			],
+
+			exclude : [
+
+
+			]
+		}
+
+
+	},
+
+
+	"dist" : {
+		"host" : "s1.intounion.com",
+		"user" : "backup",
+		"dir"  : "/var/backups/rmshef"
+	}
+} 

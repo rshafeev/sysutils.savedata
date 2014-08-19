@@ -1,0 +1,11 @@
+--admin_host
+http://localhost:8080/jlogistics
+--admin_login
+rs@premiumgis.com
+--admin_pass
+14R199009pass
+--class
+Christofides
+--number
+1
+--debug
