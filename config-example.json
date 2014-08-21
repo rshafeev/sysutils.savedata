@@ -1,0 +1,53 @@
+{
+ "root" : {
+    "passphrase" : "romaroma19",
+    "exclude" : [
+       "*.jar",
+       "Debug",
+       "Release"
+    ]
+ },
+ "source" : {
+      "docs" : {
+      	"type" : "dir",
+      	"path" : "/home/romario/docs",
+      	"exclude" : [
+            "*.class"
+      	],
+        "period" : "1Y"
+      },
+
+      "pgsql" : {
+      	"type" : "pgsql",
+      	"run-as-user" : "postgres",
+      	"db": [
+           "wiki_corp",
+           "redmine",
+           "openfiredb"
+      	],
+      	"period" : "1Y"
+      }
+ },
+ 
+ "dest" : {
+ 	"local1" : {
+       "type" : "local",
+       "path" : "/var/backups/savedata",
+       "rsync" : {
+			"serv_sync" : {
+       			"type": "bytcasa",
+       			"username": "rs@introunion",
+       			"password": "вщтифыыЦштШтщц"
+    		}       	
+       }
+ 	},
+
+    "serv1" : {
+       "type": "bytcasa",
+       "username": "rs@introunion",
+       "password": "вщтифыыЦштШтщц"
+    }
+ 
+ }
+
+}
