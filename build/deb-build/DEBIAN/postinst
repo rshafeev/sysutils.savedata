@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if which pycompile >/dev/null 2>&1; then
+	pycompile /usr/lib/savedata 
+fi
+
+rm /usr/bin/savedata-backup
+ln -s /usr/lib/savedata/savedata-backup.sh /usr/bin/savedata-backup

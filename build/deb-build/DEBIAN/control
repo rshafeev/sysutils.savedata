@@ -1,0 +1,9 @@
+Package: savedata
+Version: 0.01~beta
+Section: admin
+Architecture: all
+Depends: python (>=2.3.5-7), duplicity(>=0.6.23)
+Build-Depends: python (>=2.3.5-7), python-all-dev, python-central
+Maintainer: Roman Shafeyev rs@introunion.com
+Description: Simple backup automation utility for Linux distributive.
+ Simple backup automation utility for Linux distributive.

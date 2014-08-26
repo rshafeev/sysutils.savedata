@@ -1,0 +1,6 @@
+
+
+
+* Install
+sudo apt-get install duplicity
+sudo apt-get install davfs2

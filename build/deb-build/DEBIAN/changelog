@@ -1,0 +1,5 @@
+savedata (0.01~beta) stable; urgency=medium
+
+* Support backuping to local path and webdavs server.
+
+-- Roman Shafeyev rs@introunion.com Sun, 25 Aug 2014 00:11:46 +0300
