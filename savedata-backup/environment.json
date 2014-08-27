@@ -1,0 +1,15 @@
+{
+  /*
+  	testing mode (use for developing project)
+  	export ENV='test'; bash savedata-backup.sh -b ../private/backups.json -s ../private/servers.json --debug --rewrite
+  */
+	"test" : {
+		"gconf" : "../conf/global.conf"
+	},
+
+	"production" : {
+		"gconf" : "/etc/savedata/global.conf"
+	}
+
+
+}

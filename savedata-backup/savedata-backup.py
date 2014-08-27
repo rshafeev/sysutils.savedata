@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 #!/usr/bin/python
 # -*- coding: utf- -*-
-import sys
 import os
 import os.path
 import argparse
@@ -11,19 +10,20 @@ import logging
 import shutil
 import subprocess
 import commentjson
+import traceback
+import datetime
+import appsetup
 from argparse import RawTextHelpFormatter
 from throwble import ConcoleArgsException
-from os.path  import expanduser
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
 m_version = "SaveData version: 0.01~beta"
 
 #======= Global vars  =======
-env = "production"
-conf = {
-    "backups" : {},
-    "servers" : {}
+env_mode = "production"
+env = {
+    "gconf" : "/etc/savedata/global.conf"
 }
 
 gconf = {
@@ -39,132 +39,134 @@ session = {
    "cache"   : "gconf['work_path']/.cache",
    "spath"   : "session['cache']/{session_name}",
    "dbpath"  : "session['spath']/db",
-   "clean"   : True
+   "clean"   : True,
+   "init"    : False,
 }
 #======= Main function   =======
 
-
-def setup_logging(isDebug):
-    logging.basicConfig(level=logging.DEBUG)
-    logger = logging.getLogger()
-    logger.propagate = False
-    if len(logger.handlers) > 0:
-        logger.removeHandler(logger.handlers[0])
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-
-    if is_logging:
-        if not os.path.isdir(logging_path):
-             try:
-                os.makedirs(logging_path)
-             except OSError:
-                raise Exception("Error! Can not create path for logging files. Please, check configuration file: /etc/savedata/global.conf.\nFinish.\n")
-        fh = logging.FileHandler(logging_path + "/savedata.log")
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(formatter)
-    logger.addHandler(fh)
-    ch = logging.StreamHandler()
-    if isDebug is True:
-        ch.setLevel(logging.DEBUG)
-    else:
-        ch.setLevel(logging.INFO)
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-def parse_gconf(configFileName):
-    global gconf
-    # open and parse config-file
-    if not os.path.isfile(configFileName):
-        raise Exception(" File '%s' not found. Please, add global configuration file.\nFailed.\n" % configFileName)
-    conf_data = open(configFileName).read()
-    gconf = json.loads(conf_data)
-
-
-def prepare(args):
+def setupEnvironment(envFileName):
+    global env_mode
     global env
-    if not os.environ.get('ENV'):
-        env = os.environ.get('ENV')
+    
+    if os.environ.get('ENV'):
+        env_mode = os.environ.get('ENV')
+    env_settings = commentjson.parseFileJSON(envFileName)
+    
+    if not env_mode in env_settings:
+        raise Exception("Our environment mode '{0}' do not have settings-block in file {1}.".format(env_mode, envFileName))
+    env = env_settings[env_mode]
 
-
-    # if not root...kick out
-    if not os.geteuid()==0:
-        raise Exception("Only root or sudo can run this util.]\nFailed.\n")
-
-    parse_gconf("/etc/savedata/global.conf")
-
-    return
+def checkWorkPath(gconf):
+    work_path = gconf["work_path"]
     #check default file and working dir
     if not os.path.isdir(work_path):
-        raise Exception("Working path is not exists. Please, set existing working path in configuration file: /etc/savedata/global.conf.\nFailed.\n")
+        raise Exception("Working path is not exists. Please, set existing working path in configuration file: /etc/savedata/global.conf.\n")
     
     os.chmod(work_path, 0750)
     os.chown(work_path,0,0)
     
-    #cache_path  = work_path + "/.cache"
-    #webdav_path = cache_path + "/webdav"
-    #db_path     = cache_path + "/db"
-
-    # make dirs
-    try:
-        shutil.rmtree(webdav_path, ignore_errors=True)
-    except OSError:
-        pass
-    if not os.path.isdir(webdav_path):
-        try:
-            os.makedirs(webdav_path)
-        except OSError:
-            raise Exception("Error! Can not create path for mounting future webdav devices. Please, check configuration file: /etc/savedata/global.conf.\nFailed.\n")       
-
-
+    cache_path  = "%s/.cache" % work_path
     if not os.path.isdir(cache_path):
         try:
             os.makedirs(cache_path)
         except OSError:
-            raise Exception("Error! Can not create path for saving cache data. Please, check configuration file: /etc/savedata/global.conf.\nFailed.\n")       
-    
-    try:
-        shutil.rmtree(db_path, ignore_errors=True)
-    except OSError:
-        pass
+            raise Exception("Can not create path for saving cache data. Please, check configuration file: /etc/savedata/global.conf.\n")       
+    os.chmod(cache_path, 0700)
+    os.chown(cache_path,0,0)
 
+def parseConfigs(backupsfName, serversFName):
+    backups = commentjson.parseFileJSON(backupsfName)
+    servers = commentjson.parseFileJSON(serversFName)
+    conf = {}
+    conf["source"] = backups 
+    conf["dest"] = servers
+    return conf
+
+
+
+def createSession(gconf):
+    session_name = ("%s" % datetime.datetime.now()).replace(" ", "")
+    work_path = gconf["work_path"]
+    cache_path =  "%s/.cache" % work_path
+    session_path = "%s/%s" % (cache_path, session_name)
+    db_path = "%s/db" % session_path
+    session = {
+        "init"    : False,
+        "name"    : session_name, 
+        "cache"   : cache_path,
+        "spath"   : session_path,
+        "dbpath"  : db_path,
+        "clean"   : True
+    }
+
+    # make session path
+    if not os.path.isdir(session_path):
+        try:
+            os.makedirs(session_path)
+        except OSError:
+            msg = "Can not create sesssion path. Please, check configuration file: %s" % env["gconf"] 
+            raise Exception(msg)  
+    
+    # make db path
     if not os.path.isdir(db_path):
         try:
             os.makedirs(db_path)
         except OSError:
-            raise Exception("Error! Can not create path for saving cache data. Please, check configuration file: /etc/savedata/global.conf.\nFailed.\n")       
+            msg = "Can not create db path for saving dumps of backup-databases. Please, check configuration file: %s" % env["gconf"] 
+            raise Exception(msg)  
 
+    session["init"] = True
+    return session  
+
+
+def deleteSession(session):
+    if session["init"] is False:
+        return
+    try:
+        if session["clean"] is True:
+            shutil.rmtree(session["spath"], ignore_errors=True)
+    except OSError:
+        pass    
+    session["init"] = False
+
+def prepare(args):
+    # setup console-logging 
+    appsetup.logConsole(args.debug)
+
+    # if not root...kick out
+    if not os.geteuid()==0:
+        raise Exception("Only root or sudo can run this util.]\n")
+
+    setupEnvironment("environment.json")
     
- 
- 
+    # load global configs
+    gconf = commentjson.parseFileJSON(env["gconf"])
 
-    # Setup logging
-    setup_logging(args.debug)
+    # setup file-logging 
+    logging_mode = gconf["logging"]["mode"]
+    logging_path = gconf["logging"]["path"]
+    appsetup.logFile(logging_mode,logging_path, env["gconf"])
 
-    logging.debug('input args: %s', args)
-    
+    # check and configure working paths
+    checkWorkPath(gconf)
+    return gconf
 
-def parse_configfile(configFileName):
-    global conf
-    # open and parse config-file
-    if not os.path.isfile(configFileName):
-        raise Exception("Error! Can not find configuration file. Please, check arguments.\nFailed.\n")
-    conf_data = open(configFileName).read()
-    conf = json.loads(conf_data)
-    
+   
 def dump_dbs(conf):
-    sources = conf["source"]
-
+    backups = conf["source"]["backups"]
     logging.info('create pgsql dumps...')
-    for key in sources:
-       if sources[key]["type"] == "pgsql":
-            pgsql_path = db_path + "/" + key
+
+    db_path = conf["session"]["dbpath"]
+    for key in backups:
+       if backups[key]["type"] == "pgsql":
+            pgsql_path ="%s/%s" % (db_path, key)
             if not os.path.isdir(pgsql_path):
                 try:
                     os.makedirs(pgsql_path)
                 except OSError:
-                    raise Exception("Error! Can not create path for saving pgsql dumps. Please, check configuration file.\nFailed.\n")  
-
-            user = sources[key]["run-as-user"]
-            dbs  = sources[key]["db"]
+                    raise Exception("Can not create path for saving pgsql dumps. Please, check configuration file")  
+            user = backups[key]["run-as-user"]
+            dbs  = backups[key]["db"]
             for dbName in dbs:
                 logging.info('db[%s] is dumping...', dbName)
                 dbFile = pgsql_path + "/" + dbName + ".sql"
@@ -173,111 +175,78 @@ def dump_dbs(conf):
                 output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
                 if errors:
                     logging.error(errors)
-                    raise Exception('Error! Can not create dump. Please, check configuration file and try agan.\nFailed.')   
+                    raise Exception('Can not create dump. Please, check configuration file and try agan.')   
     logging.info('created pgsql dumps. OK.')
 
-def rewriteBackup(conf, rewrite, server_url,dest_type):
+def rewriteBackup(server, rewrite):
     if rewrite is False:
         return
-    if dest_type == "local" or dest_type == "bitcasa":
+    if server["type"] == "local":
        try:
-            shutil.rmtree(dest_path + "/" + srcKey, ignore_errors=True)
+            shutil.rmtree(server["remote_path"], ignore_errors=True)
        except OSError:
             pass
 
     
-def make_backup(conf, rewrite, server_url,dest_type):
-    #DUPLICITY_BACKUP_OPTIONS = "--verbosity warning --no-print-statistics --num-retries 3"
-    # "duplicity $backup_method --allow-source-mismatch $DUPLICITY_BACKUP_OPTIONS $backup_tmpdir $server_url/$backup_remote_name"
-    sources = conf["source"]
-    passphrase = conf["root"]["passphrase"]
-    env = "export PASSPHRASE=" + passphrase + "; "
-            
-    for srcKey in sources:
-        if sources[srcKey]["type"] == "pgsql":
-            src_path = db_path + "/" + srcKey
-        elif sources[srcKey]["type"] == "dir":
-            src_path = sources[srcKey]["path"]
+def make_backup(conf, server_url):
+    source = conf["source"]
+    dest = conf["dest"]
+    backups = source["backups"]
+    passphrase = dest["root"]["passphrase"]
+    env_pass = "export PASSPHRASE=" + passphrase + "; "
+    db_path = conf["session"]["dbpath"]
+    
+    for srcKey in backups:
+        duplicity_opts = "--ssl-no-check-certificate"
+        if backups[srcKey]["type"] == "pgsql":
+            src_path = "%s/%s" % (db_path, srcKey)
+            duplicity_opts += " --allow-source-mismatch"
+        elif backups[srcKey]["type"] == "dir":
+            src_path = backups[srcKey]["path"]
         else:
             continue
-
-        rewriteBackup(conf, rewrite, server_url,dest_type)
         logging.info("backuping src[%s] -> %s", src_path, srcKey)
-        opts = "--ssl-no-check-certificate"
-        cmd = "duplicity %s %s %s/%s" % (opts, src_path, server_url, srcKey)
-        output, errors =  subprocess.Popen(env + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
+        
+        cmd = "duplicity %s %s %s/%s" % (duplicity_opts, src_path, server_url, srcKey)
+        output, errors =  subprocess.Popen(env_pass + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
         if output:
-           logging.debug(output)
+           logging.info(output)
         if errors:
            logging.error(errors)
-           raise Exception('Error! Can not create backup. Please, check configuration file and try agan.\nFailed.')      
+           raise Exception('Can not create backup. Please, check configuration file and try agan.')      
     
     os.system("unset PASSPHRASE")
 
-def umount(path):
-    
-    cmd = "umount %s" % path
-    output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-    if output:
-        logging.debug(output)
-    if errors:
-        logging.debug(errors)
-
-def mount_bitcasa(username, userpass, mnt_path):
-    umount(mnt_path)
-    cmd = "mount.bitcasa %s %s -o 'password=%s'" % (username, mnt_path, userpass)
-    logging.info("bitcasa mounting...")
-    output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-    if output:
-        logging.debug(output)
-    if errors:
-        logging.error(errors)
-        raise Exception('Error! Can not mount to bitcasa. Please, check configuration file and try agan.\nFailed.')  
-    logging.info("bitcasa device was mounted. OK.")
-    
 
 def backup(conf,rewrite):
-    dest = conf["dest"]
-    for destKey in dest:
-       if dest[destKey]["type"] == "local":
+    servers = conf["dest"]["servers"]
+    for destKey in servers:
+       if servers[destKey]["type"] == "local":
              logging.info('making backup in dest: [%s]...', destKey)
-             server_url = "file://" + dest[destKey]["remote_path"]
-             make_backup(conf,rewrite, server_url, dest[destKey]["type"])
+             server_url = "file://" + servers[destKey]["remote_path"]
+             rewriteBackup(servers[destKey], rewrite)
+             make_backup(conf, server_url)
  
-       if dest[destKey]["type"] == "webdavs":
-            continue
-            credits = "%s:%s" % (dest[destKey]["username"],dest[destKey]["password"])
-            host = dest[destKey]["host"]
-            remote_path = dest[destKey]["remote_path"]
+       if servers[destKey]["type"] == "webdavs":
+            credits = "%s:%s" % (servers[destKey]["username"],servers[destKey]["password"])
+            host = servers[destKey]["host"]
+            remote_path = servers[destKey]["remote_path"]
             server_url = "webdavs://%s@%s%s" % (credits, host, remote_path)
-            make_backup(conf,rewrite, server_url, dest[destKey]["type"])
- 
-       if dest[destKey]["type"] == "bitcasa":
-             continue
-             logging.info('making backup in dest: [%s]...', destKey)
-             
-             # mount bitcasa webdav-device
-             mount_bitcasa(dest[destKey]["username"], dest[destKey]["password"], webdav_path)
-             
-             # create backup
-             server_url = "file://%s%s" % (webdav_path, dest[destKey]["remote_path"])
-             make_backup(conf,rewrite, server_url, dest[destKey]["type"])
-
-             # unmount bitcasa webdav-device
-             umount(webdav_path)
-             logging.info("bitcasa unmounting. OK. ")
-
-
-
+            make_backup(conf, server_url)
 
 
 def main(args):
-    # setup utility-settings and prepare paths and sys files for working
-    prepare(args)
+    global gconf
 
-    return
-    # read and parse config-ata from configuration file
-    parse_configfile(args.configFileName)
+    # setup utility-settings and prepare paths and sys files for working. Function return global configuration settings
+    gconf = prepare(args)
+
+    # read and parse data from configuration file (backups.json and servers.json)
+    conf = parseConfigs(args.backups_fname, args.servers_fname)
+    
+    # create session
+    session = createSession(gconf)
+    conf["session"] = session
 
     # dump databases in cache directory
     dump_dbs(conf)
@@ -285,63 +254,40 @@ def main(args):
     # backup 
     backup(conf, args.rewrite)
 
-    logging.info("Done.")
-
-
-def setup_console(sys_enc="utf-8"):
-    reload(sys)
-    try:
-        # for win32
-        if sys.platform.startswith("win"):
-            import ctypes
-            enc = "cp%d" % ctypes.windll.kernel32.GetOEMCP(
-            )  # TODO: check on win64/python64
-        else:
-            # for Linux
-            enc = (sys.stdout.encoding if sys.stdout.isatty() else
-                   sys.stderr.encoding if sys.stderr.isatty() else
-                   sys.getfilesystemencoding() or sys_enc)
-
-        # encoding sys
-        sys.setdefaultencoding(sys_enc)
-
-        if sys.stdout.isatty() and sys.stdout.encoding != enc:
-            sys.stdout = codecs.getwriter(enc)(sys.stdout, 'replace')
-
-        if sys.stderr.isatty() and sys.stderr.encoding != enc:
-            sys.stderr = codecs.getwriter(enc)(sys.stderr, 'replace')
-
-    except:
-        pass  # Error? Work in standard mode
-#======= Options config   =======
+    # delete session
+    deleteSession(session)
+    return
 
 
 def prepare_argsParser():
     argsParser = argparse.ArgumentParser(
         version=m_version, fromfile_prefix_chars='@', description=m_desc, formatter_class=RawTextHelpFormatter)
     argsParser.add_argument(
-        "-c", "--config", dest="configFileName", help="File name of configuration file (json format).",
-        default="config.json", required=False)
+        "-b", "--backups", dest="backups_fname", help="[REQUIRED]. Configuration file  with sorce information, which you want backuping (json format).",
+        default="backups.json", required=True)
     argsParser.add_argument(
-        "--rewrite", dest="rewrite", help="Rewrite backups in destination(use, when you change passphrase)", action='store_true', default=False)
+        "-s", "--servers", dest="servers_fname", help="[REQUIRED]. Configuration file with destination settings, in which you want storage backups (json format).",
+        default="servers.json", required=True)
+    argsParser.add_argument(
+        "--rewrite", dest="rewrite", help="Rewrite backups in destination(use, when you want change your passphrase)", action='store_true', default=False)
     argsParser.add_argument(
         "--debug", dest="debug", help="Output debug information into console", action='store_true', default=False)
-    
     return argsParser
 
-
 def start_app():
-    setup_console()
+    appsetup.console_configure()
     argsParser = prepare_argsParser()
     try:
         main(argsParser.parse_args())
+        logging.info("FINISH. OK. ")
     except ConcoleArgsException as e:
-        print argsParser.print_usage()
         logging.error("console:%s" % e.value)
+        logging.warning("FAILED.")
     except Exception as e:
-        logging.exception(e)
-        print e.value
-
+        deleteSession(session)
+        logging.error(e)
+        logging.debug(traceback.format_exc())
+        logging.warning("FAILED.")
 
 start_app()
 

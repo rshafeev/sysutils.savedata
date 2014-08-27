@@ -28,6 +28,7 @@ mkdir deb-build/etc/savedata
 # copy files
 echo "copy file ..."
 cp -r ../savedata-backup/*.py deb-build/usr/lib/savedata
+cp -r ../savedata-backup/*.json deb-build/usr/lib/savedata
 cp -r ../savedata-backup/*.sh deb-build/usr/lib/savedata
 cp -r ../conf/* deb-build/etc/savedata/
 
