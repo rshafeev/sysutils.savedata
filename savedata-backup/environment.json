@@ -4,11 +4,11 @@
   	export ENV='test'; bash savedata-backup.sh -b ../private/backups.json -s ../private/servers.json --debug --rewrite
   */
 	"test" : {
-		"gconf" : "../private/global.conf"
+		"gconf" : "../private/global.json"
 	},
 
 	"production" : {
-		"gconf" : "/etc/savedata/global.conf"
+		"gconf" : "/etc/savedata/global.json"
 	}
 
 

@@ -1,0 +1,20 @@
+{
+  "work_path"  : "/var/lib/savedata",
+  "logging" : {
+      "mode" : "on",
+      "path" : "/var/log/savedata"
+  }/*,
+  "email":{
+     "smtp_settings" : {
+        "username" : "name@example.com",
+        "password" : "xxxx",
+        "address" : "smtp.domain.com",
+        "port": 587
+         },
+      "from" : "name@example.com",
+      "to": "destination@example.net",
+      "send_succes" : true,
+      "send_failed" : true
+  }
+  */
+} 

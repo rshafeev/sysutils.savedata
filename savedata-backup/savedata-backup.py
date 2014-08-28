@@ -124,7 +124,7 @@ def createSession(gconf):
     session["init"] = True
     return session  
 
-
+`
 def deleteSession(session):
     if session["init"] is False:
         return
