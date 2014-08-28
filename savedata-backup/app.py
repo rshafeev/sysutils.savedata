@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 
+
 def console_configure(sys_enc="utf-8"):
     reload(sys)
     try:
@@ -47,8 +48,15 @@ def logConsole(debugLevel):
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
+def clearLogging():
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger()
+    logger.propagate = False
+    while len(logger.handlers) > 0:
+        logger.removeHandler(logger.handlers[0])
 
-def logFile(mode, loggingPath, gconfFileName):
+def logFile(mode, loggingPath, loggingFileName, gconfFileName):
+    fullFileName = loggingPath + "/" + loggingFileName
     if mode == "off":
         return
     if mode != "on":
@@ -58,13 +66,49 @@ def logFile(mode, loggingPath, gconfFileName):
         msg = "Can not find logging path %s. Please, check configuration file: %s" % (loggingPath, gconfFileName)
         raise Exception(msg)
 
+  
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger()
     logger.propagate = False
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-    fh = logging.FileHandler(loggingPath + "/savedata.log")
+    fh = logging.FileHandler(fullFileName)
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
-    
+
+#################################################
+import sys
+import os
+import re
+
+from smtplib import SMTP_SSL as SMTP       # this invokes the secure SMTP protocol (port 465, uses SSL)
+# from smtplib import SMTP                  # use this for standard SMTP protocol   (port 25, no encryption)
+from email.MIMEText import MIMEText
+
+
+def sendEmail(smtp_settings, sender, destination, content, subject):
+    SMTPserver = smtp_settings["address"]
+    port = smtp_settings["port"]
+    USERNAME = smtp_settings["username"]
+    PASSWORD = smtp_settings["password"]
+
+    # typical values for text_subtype are plain, html, xml
+    text_subtype = 'plain'
+    try:
+        contenthtml = u'' + content
+        msg = MIMEText(contenthtml, text_subtype, "utf-8")
+       # msg = MIMEText(u'\u3053\u3093\u306b\u3061\u306f\u3001\u4e16\u754c\uff01\n',
+       #          "plain", "utf-8")
+
+        msg['Subject']=       subject
+        msg['From']   = sender # some SMTP servers will do this automatically, not all
+        conn = SMTP(SMTPserver)
+        conn.set_debuglevel(False)
+        conn.login(USERNAME, PASSWORD)
+        try:
+            conn.sendmail(sender, destination, msg.as_string())
+        finally:
+            conn.close()
+    except Exception, exc:
+        sys.exit( "mail failed; %s" % str(exc) ) # give a error message

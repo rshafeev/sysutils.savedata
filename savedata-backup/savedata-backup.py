@@ -12,7 +12,7 @@ import subprocess
 import commentjson
 import traceback
 import datetime
-import appsetup
+import app
 from argparse import RawTextHelpFormatter
 from throwble import ConcoleArgsException
 
@@ -90,13 +90,15 @@ def createSession(gconf):
     cache_path =  "%s/.cache" % work_path
     session_path = "%s/%s" % (cache_path, session_name)
     db_path = "%s/db" % session_path
+    loggingFileName = "savedata-%s.log" % session_name
     session = {
         "init"    : False,
         "name"    : session_name, 
         "cache"   : cache_path,
         "spath"   : session_path,
         "dbpath"  : db_path,
-        "clean"   : True
+        "clean"   : True,
+        "log"     : loggingFileName
     }
 
     # make session path
@@ -114,6 +116,10 @@ def createSession(gconf):
         except OSError:
             msg = "Can not create db path for saving dumps of backup-databases. Please, check configuration file: %s" % env["gconf"] 
             raise Exception(msg)  
+    # prepare logging session
+    logging_mode = gconf["logging"]["mode"]
+    logging_path = gconf["logging"]["path"]
+    app.logFile(logging_mode,logging_path,session["log"], env["gconf"])
 
     session["init"] = True
     return session  
@@ -123,15 +129,60 @@ def deleteSession(session):
     if session["init"] is False:
         return
     try:
+        logging_path = gconf["logging"]["path"]
+        fullLogFileName = "%s/%s" % (logging_path, session["log"])
+        os.remove(fullLogFileName)
+    except OSError as e:
+        print e
+
+    try:
         if session["clean"] is True:
             shutil.rmtree(session["spath"], ignore_errors=True)
     except OSError:
         pass    
     session["init"] = False
 
+def sendLogToEmail(session, status):
+    if status!="success" and status!="failed":
+        raise Exception("Email status can be only 'success' or 'failed' ")
+    if not "email" in gconf:
+        return
+    if not "smtp_settings" in gconf["email"]:
+        return
+
+    try:
+        if gconf["email"]["send_succes"] is False and status == "success":
+            return
+        if gconf["email"]["send_failed"] is False and status == "failed":
+            return
+        smtp_settings = gconf["email"]["smtp_settings"]
+        sender = gconf["email"]["from"]
+        destination =gconf["email"]["to"]
+        logging_path = gconf["logging"]["path"]
+        fullLogFileName = "%s/%s" % (logging_path, session["log"])
+        logarr = ''
+        with open(fullLogFileName) as f:
+            logarr = f.readlines()
+        loginfo = ""
+        for line in logarr:
+            loginfo += line
+        loginfo = loginfo.decode('string_escape')
+        content = "Log information from last backupping:\n%s" % loginfo
+        subject = "SaveData-Backup : %s" % status
+        app.sendEmail(smtp_settings, sender, destination, content, subject)
+    except OSError:
+        msg = "Can not send email. Please, check your global configuration file %s" % env["gconf"]
+        raise Exception(msg)  
+
+
+def setupFileLogging(gconf):
+    logging_mode = gconf["logging"]["mode"]
+    logging_path = gconf["logging"]["path"]
+    app.logFile(logging_mode,logging_path,"savedata.log", env["gconf"])
+
 def prepare(args):
     # setup console-logging 
-    appsetup.logConsole(args.debug)
+    app.logConsole(args.debug)
 
     # if not root...kick out
     if not os.geteuid()==0:
@@ -143,9 +194,8 @@ def prepare(args):
     gconf = commentjson.parseFileJSON(env["gconf"])
 
     # setup file-logging 
-    logging_mode = gconf["logging"]["mode"]
-    logging_path = gconf["logging"]["path"]
-    appsetup.logFile(logging_mode,logging_path, env["gconf"])
+    setupFileLogging(gconf)
+
 
     # check and configure working paths
     checkWorkPath(gconf)
@@ -235,8 +285,10 @@ def backup(conf,rewrite):
             make_backup(conf, server_url)
 
 
+
 def main(args):
     global gconf
+    global session
 
     # setup utility-settings and prepare paths and sys files for working. Function return global configuration settings
     gconf = prepare(args)
@@ -254,8 +306,6 @@ def main(args):
     # backup 
     backup(conf, args.rewrite)
 
-    # delete session
-    deleteSession(session)
     return
 
 
@@ -275,19 +325,25 @@ def prepare_argsParser():
     return argsParser
 
 def start_app():
-    appsetup.console_configure()
+    app.console_configure()
     argsParser = prepare_argsParser()
     try:
         main(argsParser.parse_args())
         logging.info("FINISH. OK. ")
+        # send email
+        sendLogToEmail(session, "success")
     except ConcoleArgsException as e:
         logging.error("console:%s" % e.value)
         logging.warning("FAILED.")
     except Exception as e:
-        deleteSession(session)
         logging.error(e)
         logging.debug(traceback.format_exc())
         logging.warning("FAILED.")
+        # send email
+        sendLogToEmail(session, "failed")
+    
+    # delete session
+    deleteSession(session)
 
 start_app()
 
