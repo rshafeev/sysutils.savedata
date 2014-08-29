@@ -3,7 +3,78 @@ import logging
 import sys
 import os
 import yaml
+import re
+from smtplib import SMTP_SSL as SMTP       # this invokes the secure SMTP protocol (port 465, uses SSL)
+# from smtplib import SMTP                  # use this for standard SMTP protocol   (port 25, no encryption)
+from email.MIMEText import MIMEText
 
+
+def buildServerURL(server):
+   if server["type"] == "local":
+      server_url = "file://" + server["remote_path"]
+      return server_url
+   if server["type"] == "webdavs":
+      credits = "%s:%s" % (server["username"],server["password"])
+      host =  server["host"]
+      remote_path = server["remote_path"]
+      server_url = "webdavs://%s@%s%s" % (credits, host, remote_path)
+      return server_url
+
+def setupEnvironment(envFileName):
+    env_mode = "production"
+    if os.environ.get('SAVADETA_ENV'):
+        env_mode = os.environ.get('SAVADETA_ENV')
+    
+    env_settings = parseYamlFile(envFileName)
+    
+    if not env_mode in env_settings:
+        raise Exception("Our environment mode '{0}' do not have settings-block in file {1}.".format(env_mode, envFileName))
+    env = env_settings[env_mode]
+    logging.debug("environment[%s] = %s", env_mode, env)
+    return (env, env_mode)
+
+def checkWorkPath(gconf):
+    work_path = gconf["work_path"]
+    #check default file and working dir
+    if not os.path.isdir(work_path):
+        raise Exception("Working path is not exists. Please, set existing working path in configuration file: /etc/savedata/global.conf.\n")
+    
+    os.chmod(work_path, 0750)
+    os.chown(work_path,0,0)
+    
+    cache_path  = "%s/.cache" % work_path
+    if not os.path.isdir(cache_path):
+        try:
+            os.makedirs(cache_path)
+        except OSError:
+            raise Exception("Can not create path for saving cache data. Please, check configuration file: /etc/savedata/global.conf.\n")       
+    os.chmod(cache_path, 0700)
+    os.chown(cache_path,0,0)
+
+def setupFileLogging(gconf, logFileName, gconfFileName):
+    logging_mode = gconf["logging"]["mode"]
+    logging_path = gconf["logging"]["path"]
+    logFile(logging_mode,logging_path,logFileName, gconfFileName)
+
+def prepare(debug, logFileName):
+    # setup console-logging 
+    logConsole(debug)
+
+    # if not root...kick out
+    if not os.geteuid()==0:
+        raise Exception("Only root or sudo can run this util.]\n")
+
+    env, env_mode = setupEnvironment("environment.yml")
+    
+    # load global configs
+    gconf = parseYamlFile(env["gconf"])
+
+    # setup file-logging 
+    setupFileLogging(gconf,logFileName, env["gconf"])
+
+    # check and configure working paths
+    checkWorkPath(gconf)
+    return  (gconf,env,env_mode)
 
 def parseYamlFile(filename):
     if not os.path.isfile(filename):
@@ -84,30 +155,16 @@ def logFile(mode, loggingPath, loggingFileName, gconfFileName):
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
-#################################################
-import sys
-import os
-import re
-
-from smtplib import SMTP_SSL as SMTP       # this invokes the secure SMTP protocol (port 465, uses SSL)
-# from smtplib import SMTP                  # use this for standard SMTP protocol   (port 25, no encryption)
-from email.MIMEText import MIMEText
-
-
 def sendEmail(smtp_settings, sender, destination, content, subject):
     SMTPserver = smtp_settings["address"]
     port = smtp_settings["port"]
     USERNAME = smtp_settings["username"]
     PASSWORD = smtp_settings["password"]
 
-    # typical values for text_subtype are plain, html, xml
     text_subtype = 'plain'
     try:
         contenthtml = u'' + content
         msg = MIMEText(contenthtml, text_subtype, "utf-8")
-       # msg = MIMEText(u'\u3053\u3093\u306b\u3061\u306f\u3001\u4e16\u754c\uff01\n',
-       #          "plain", "utf-8")
-
         msg['Subject']=       subject
         msg['From']   = sender # some SMTP servers will do this automatically, not all
         conn = SMTP(SMTPserver)

@@ -1,4 +1,17 @@
 
+*Use examples
+
+# auth to root
+sudo su
+
+# create backup
+bash savedata-backup.sh -b ../private/backups.yml -s ../private/servers.yml --debug
+
+# show status of backups
+bash savedata-restore.sh -s ../private/servers.yml --server_name 's1' --backup_name 'pgsql' --status
+
+# restore data 
+bash savedata-restore.sh -s ../private/servers.yml --server_name 's1' --backup_name 'docs' --status --debug --restore_path /home/user1/tmp/docs/
 
 
 * Install

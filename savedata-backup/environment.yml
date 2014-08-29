@@ -1,10 +1,11 @@
 # execute example:
 # export SAVADETA_ENV='test'; bash savedata-backup.sh -b ../private/backups.yml -s ../private/servers.yml --debug
-
+# export SAVADETA_ENV='test'; bash savedata-restore.sh -s ../private/servers.yml --server_name 's1' --backup_name 'pgsql' --status
+# export SAVADETA_ENV='test'; bash savedata-restore.sh -s ../private/servers.yml --server_name 's1' --backup_name 'docs' --status --debug --restore_path /home/romario/tmp/docs/
 # test mode
 test:
   #testing mode (use for developing project)
-  gconf: '../private/configuration.yml'
+  gconf: '/etc/savedata/configuration.yml'
 
 # production mode
 production:

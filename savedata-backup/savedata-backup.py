@@ -41,39 +41,6 @@ session = {
 }
 #======= Main function   =======
 
-def setupEnvironment(envFileName):
-    global env_mode
-    global env
-    
-    if os.environ.get('SAVADETA_ENV'):
-        env_mode = os.environ.get('SAVADETA_ENV')
-    
-    env_settings = app.parseYamlFile(envFileName)
-    
-    if not env_mode in env_settings:
-        raise Exception("Our environment mode '{0}' do not have settings-block in file {1}.".format(env_mode, envFileName))
-    env = env_settings[env_mode]
-    logging.debug("environment[%s] = %s", env_mode, env)
-
-def checkWorkPath(gconf):
-    work_path = gconf["work_path"]
-    #check default file and working dir
-    if not os.path.isdir(work_path):
-        raise Exception("Working path is not exists. Please, set existing working path in configuration file: /etc/savedata/global.conf.\n")
-    
-    os.chmod(work_path, 0750)
-    os.chown(work_path,0,0)
-    
-    cache_path  = "%s/.cache" % work_path
-    if not os.path.isdir(cache_path):
-        try:
-            os.makedirs(cache_path)
-        except OSError:
-            raise Exception("Can not create path for saving cache data. Please, check configuration file: /etc/savedata/global.conf.\n")       
-    os.chmod(cache_path, 0700)
-    os.chown(cache_path,0,0)
-
-
 def parseConfigs(backupsfName, serversFName):
 
     source = app.parseYamlFile(backupsfName)
@@ -177,30 +144,7 @@ def sendLogToEmail(session, status):
         raise Exception(msg)  
 
 
-def setupFileLogging(gconf):
-    logging_mode = gconf["logging"]["mode"]
-    logging_path = gconf["logging"]["path"]
-    app.logFile(logging_mode,logging_path,"savedata-backup.log", env["gconf"])
 
-def prepare(args):
-    # setup console-logging 
-    app.logConsole(args.debug)
-
-    # if not root...kick out
-    if not os.geteuid()==0:
-        raise Exception("Only root or sudo can run this util.]\n")
-
-    setupEnvironment("environment.yml")
-    
-    # load global configs
-    gconf = app.parseYamlFile(env["gconf"])
-
-    # setup file-logging 
-    setupFileLogging(gconf)
-
-    # check and configure working paths
-    checkWorkPath(gconf)
-    return gconf
 
    
 def dump_dbs(conf):
@@ -283,27 +227,26 @@ def make_backup(conf, server_url, server_key):
 def backup(conf,rewrite):
     servers = conf["dest"]["servers"]
     for destKey in servers:
-       if servers[destKey]["type"] == "local":
-             logging.info('making backup in dest: [%s]...', destKey)
-             server_url = "file://" + servers[destKey]["remote_path"]
-             rewriteBackup(servers[destKey], rewrite)
-             make_backup(conf, server_url, destKey)
- 
-       if servers[destKey]["type"] == "webdavs":
-            credits = "%s:%s" % (servers[destKey]["username"],servers[destKey]["password"])
-            host = servers[destKey]["host"]
-            remote_path = servers[destKey]["remote_path"]
-            server_url = "webdavs://%s@%s%s" % (credits, host, remote_path)
-            make_backup(conf, server_url, destKey)
-
+       server = servers[destKey] 
+       logging.info('making backup in dest: [%s]...', destKey)
+       if server["type"] == "local":
+           rewriteBackup(servers[destKey], rewrite)
+       elif servers[destKey]["type"] == "webdavs":
+           pass
+       else:
+           continue
+       server_url = app.buildServerURL(server)
+       make_backup(conf, server_url, destKey)
 
 
 def main(args):
     global gconf
     global session
+    global env_mode
+    global env
 
     # setup utility-settings and prepare paths and sys files for working. Function return global configuration settings
-    gconf = prepare(args)
+    gconf,env,env_mode = app.prepare(args.debug,"savedata-backup.log")
 
     # read and parse data from configuration file (backups.json and servers.json)
     conf = parseConfigs(args.backups_fname, args.servers_fname)
@@ -325,11 +268,11 @@ def prepare_argsParser():
     argsParser = argparse.ArgumentParser(
         version=m_version, fromfile_prefix_chars='@', description=m_desc, formatter_class=argparse.RawTextHelpFormatter)
     argsParser.add_argument(
-        "-b", "--backups", dest="backups_fname", help="[REQUIRED]. Configuration file  with sorce information, which you want backuping (json format).",
-        default="backups.json", required=True)
+        "-b", "--backups", dest="backups_fname", help="Configuration file  with sorce information, which you want backuping (ymal format).",
+        default="/etc/savedata/backups.yml", required=False)
     argsParser.add_argument(
-        "-s", "--servers", dest="servers_fname", help="[REQUIRED]. Configuration file with destination settings, in which you want storage backups (json format).",
-        default="servers.json", required=True)
+        "-s", "--servers", dest="servers_fname", help="Configuration file with destination settings, in which you want storage backups (ymal format).",
+        default="/etc/savedata/servers.yml", required=False)
     argsParser.add_argument(
         "--rewrite", dest="rewrite", help="Rewrite backups in destination(use, when you want change your passphrase)", action='store_true', default=False)
     argsParser.add_argument(
