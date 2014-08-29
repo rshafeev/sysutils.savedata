@@ -83,7 +83,8 @@ def createSession(gconf):
             os.makedirs(db_path)
         except OSError:
             msg = "Can not create db path for saving dumps of backup-databases. Please, check configuration file: %s" % env["gconf"] 
-            raise Exception(msg)  
+            raise Exception(msg)
+
     # prepare logging session
     logging_mode = gconf["logging"]["mode"]
     logging_path = gconf["logging"]["path"]
@@ -145,8 +146,30 @@ def sendLogToEmail(session, status):
 
 
 
+def dump_gitlab(conf):
+    backups = conf["source"]["backups"]
+    logging.info('create gitlab dumps...')
+    db_path = conf["session"]["dbpath"]
+    for key in backups:
+       if backups[key]["type"] == "pgsql":
+            pgsql_path ="%s/%s" % (db_path, key)
+            if not os.path.isdir(pgsql_path):
+                try:
+                    os.makedirs(pgsql_path)
+                except OSError:
+                    raise Exception("Can not create path for saving pgsql dumps. Please, check configuration file")  
+            user = backups[key]["run-as-user"]
+            dbs  = backups[key]["db"]
+            for dbName in dbs:
+                logging.info('db[%s] is dumping...', dbName)
+                dbFile = pgsql_path + "/" + dbName + ".sql"
+                cmd = "su - " + user  + " -c 'pg_dump -d " + dbName + "'>> " + dbFile
+                output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
+                if errors:
+                    logging.error(errors)
+                    raise Exception('Can not create dump. Please, check configuration file and try agan.')   
+    logging.info('created pgsql dumps. OK.')
 
-   
 def dump_dbs(conf):
     backups = conf["source"]["backups"]
     logging.info('create pgsql dumps...')
@@ -219,6 +242,7 @@ def make_backup(conf, server_url, server_key):
         key_opts = ""
         if "full" in backup:
             key_opts += "--full-if-older-than %s " % backup["full"]
+        
         if backup["type"] == "pgsql":
             src_path = "%s/%s" % (db_path, srcKey)
             key_opts += " --allow-source-mismatch"
@@ -277,6 +301,8 @@ def main(args):
 
     # dump databases in cache directory
     dump_dbs(conf)
+
+    dump_gitlab(conf)
 
     # backup 
     backup(conf, args.rewrite)
