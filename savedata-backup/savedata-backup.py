@@ -9,12 +9,9 @@ import json
 import logging
 import shutil
 import subprocess
-import commentjson
 import traceback
 import datetime
 import app
-from argparse import RawTextHelpFormatter
-from throwble import ConcoleArgsException
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
@@ -48,13 +45,15 @@ def setupEnvironment(envFileName):
     global env_mode
     global env
     
-    if os.environ.get('ENV'):
-        env_mode = os.environ.get('ENV')
-    env_settings = commentjson.parseFileJSON(envFileName)
+    if os.environ.get('SAVADETA_ENV'):
+        env_mode = os.environ.get('SAVADETA_ENV')
+    
+    env_settings = app.parseYamlFile(envFileName)
     
     if not env_mode in env_settings:
         raise Exception("Our environment mode '{0}' do not have settings-block in file {1}.".format(env_mode, envFileName))
     env = env_settings[env_mode]
+    logging.debug("environment[%s] = %s", env_mode, env)
 
 def checkWorkPath(gconf):
     work_path = gconf["work_path"]
@@ -74,12 +73,14 @@ def checkWorkPath(gconf):
     os.chmod(cache_path, 0700)
     os.chown(cache_path,0,0)
 
+
 def parseConfigs(backupsfName, serversFName):
-    backups = commentjson.parseFileJSON(backupsfName)
-    servers = commentjson.parseFileJSON(serversFName)
-    conf = {}
-    conf["source"] = backups 
-    conf["dest"] = servers
+
+    source = app.parseYamlFile(backupsfName)
+    dest   = app.parseYamlFile(serversFName)
+    conf   = {}
+    conf["source"] = source 
+    conf["dest"] = dest
     return conf
 
 
@@ -90,7 +91,7 @@ def createSession(gconf):
     cache_path =  "%s/.cache" % work_path
     session_path = "%s/%s" % (cache_path, session_name)
     db_path = "%s/db" % session_path
-    loggingFileName = "savedata-%s.log" % session_name
+    loggingFileName = "savedata-backup-%s.log" % session_name
     session = {
         "init"    : False,
         "name"    : session_name, 
@@ -124,7 +125,7 @@ def createSession(gconf):
     session["init"] = True
     return session  
 
-`
+
 def deleteSession(session):
     if session["init"] is False:
         return
@@ -133,7 +134,7 @@ def deleteSession(session):
         fullLogFileName = "%s/%s" % (logging_path, session["log"])
         os.remove(fullLogFileName)
     except OSError as e:
-        print e
+        pass
 
     try:
         if session["clean"] is True:
@@ -141,6 +142,7 @@ def deleteSession(session):
     except OSError:
         pass    
     session["init"] = False
+    os.system("unset PASSPHRASE")
 
 def sendLogToEmail(session, status):
     if status!="success" and status!="failed":
@@ -178,7 +180,7 @@ def sendLogToEmail(session, status):
 def setupFileLogging(gconf):
     logging_mode = gconf["logging"]["mode"]
     logging_path = gconf["logging"]["path"]
-    app.logFile(logging_mode,logging_path,"savedata.log", env["gconf"])
+    app.logFile(logging_mode,logging_path,"savedata-backup.log", env["gconf"])
 
 def prepare(args):
     # setup console-logging 
@@ -188,14 +190,13 @@ def prepare(args):
     if not os.geteuid()==0:
         raise Exception("Only root or sudo can run this util.]\n")
 
-    setupEnvironment("environment.json")
+    setupEnvironment("environment.yml")
     
     # load global configs
-    gconf = commentjson.parseFileJSON(env["gconf"])
+    gconf = app.parseYamlFile(env["gconf"])
 
     # setup file-logging 
     setupFileLogging(gconf)
-
 
     # check and configure working paths
     checkWorkPath(gconf)
@@ -221,7 +222,6 @@ def dump_dbs(conf):
                 logging.info('db[%s] is dumping...', dbName)
                 dbFile = pgsql_path + "/" + dbName + ".sql"
                 cmd = "su - " + user  + " -c 'pg_dump -d " + dbName + "'>> " + dbFile
-                #os.system(cmd)
                 output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
                 if errors:
                     logging.error(errors)
@@ -237,26 +237,38 @@ def rewriteBackup(server, rewrite):
        except OSError:
             pass
 
+def getExcludeOpts(backup):
+    opts = ""
+    if not "exclude" in backup:
+        return ""
+    for excl in backup["exclude"]:
+        opts += " --exclude '%s'" % excl
+    return opts
     
-def make_backup(conf, server_url):
+def make_backup(conf, server_url, server_key):
     source = conf["source"]
     dest = conf["dest"]
     backups = source["backups"]
-    passphrase = dest["root"]["passphrase"]
-    env_pass = "export PASSPHRASE=" + passphrase + "; "
     db_path = conf["session"]["dbpath"]
-    
+    base_opts = " --ssl-no-check-certificate"
     for srcKey in backups:
-        duplicity_opts = "--ssl-no-check-certificate"
-        if backups[srcKey]["type"] == "pgsql":
+        backup = backups[srcKey]
+        exclude_opts = getExcludeOpts(backup)
+        key_opts = ""
+        if backup["type"] == "pgsql":
             src_path = "%s/%s" % (db_path, srcKey)
-            duplicity_opts += " --allow-source-mismatch"
-        elif backups[srcKey]["type"] == "dir":
-            src_path = backups[srcKey]["path"]
+            key_opts += " --allow-source-mismatch"
+        elif backup["type"] == "dir":
+            src_path = backup["path"]
         else:
             continue
-        logging.info("backuping src[%s] -> %s", src_path, srcKey)
-        
+        # make env-variable with passphrase
+        passphrase = backup["passphrase"]
+        env_pass = "export PASSPHRASE=" + passphrase + "; "
+
+        logging.info("backuping src[%s:%s] -> dest[%s]", srcKey, src_path, server_key)
+        duplicity_opts = " %s %s %s" % (base_opts, exclude_opts, key_opts)
+        logging.debug("duplicity opts: %s", duplicity_opts) 
         cmd = "duplicity %s %s %s/%s" % (duplicity_opts, src_path, server_url, srcKey)
         output, errors =  subprocess.Popen(env_pass + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
         if output:
@@ -275,14 +287,14 @@ def backup(conf,rewrite):
              logging.info('making backup in dest: [%s]...', destKey)
              server_url = "file://" + servers[destKey]["remote_path"]
              rewriteBackup(servers[destKey], rewrite)
-             make_backup(conf, server_url)
+             make_backup(conf, server_url, destKey)
  
        if servers[destKey]["type"] == "webdavs":
             credits = "%s:%s" % (servers[destKey]["username"],servers[destKey]["password"])
             host = servers[destKey]["host"]
             remote_path = servers[destKey]["remote_path"]
             server_url = "webdavs://%s@%s%s" % (credits, host, remote_path)
-            make_backup(conf, server_url)
+            make_backup(conf, server_url, destKey)
 
 
 
@@ -311,7 +323,7 @@ def main(args):
 
 def prepare_argsParser():
     argsParser = argparse.ArgumentParser(
-        version=m_version, fromfile_prefix_chars='@', description=m_desc, formatter_class=RawTextHelpFormatter)
+        version=m_version, fromfile_prefix_chars='@', description=m_desc, formatter_class=argparse.RawTextHelpFormatter)
     argsParser.add_argument(
         "-b", "--backups", dest="backups_fname", help="[REQUIRED]. Configuration file  with sorce information, which you want backuping (json format).",
         default="backups.json", required=True)
@@ -332,9 +344,6 @@ def start_app():
         logging.info("FINISH. OK. ")
         # send email
         sendLogToEmail(session, "success")
-    except ConcoleArgsException as e:
-        logging.error("console:%s" % e.value)
-        logging.warning("FAILED.")
     except Exception as e:
         logging.error(e)
         logging.debug(traceback.format_exc())

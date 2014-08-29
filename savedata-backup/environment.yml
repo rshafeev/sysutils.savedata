@@ -1,0 +1,11 @@
+# execute example:
+# export SAVADETA_ENV='test'; bash savedata-backup.sh -b ../private/backups.yml -s ../private/servers.yml --debug
+
+# test mode
+test:
+  #testing mode (use for developing project)
+  gconf: '../private/configuration.yml'
+
+# production mode
+production:
+  gconf: '/etc/savedata/configuration.yml'

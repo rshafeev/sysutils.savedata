@@ -2,8 +2,15 @@
 import logging
 import sys
 import os
+import yaml
 
 
+def parseYamlFile(filename):
+    if not os.path.isfile(filename):
+        raise Exception(" File '%s' not found. Please, add configuration file and try again.\nFailed.\n" % filename)
+    stream = open(filename, 'r')
+    return yaml.load(stream)
+    
 def console_configure(sys_enc="utf-8"):
     reload(sys)
     try:

@@ -1,9 +1,27 @@
 #!/bin/sh
 set -e
 
+# compile python code
 if which pycompile >/dev/null 2>&1; then
 	pycompile /usr/lib/savedata 
 fi
 
-rm /usr/bin/savedata-backup
+# create links
+if [ -f "/usr/bin/savedata-backup" ]; then
+	rm /usr/bin/savedata-backup
+fi
+
 ln -s /usr/lib/savedata/savedata-backup.sh /usr/bin/savedata-backup
+
+# make dirs
+if [ ! -d "/var/lib/savedata" ]; then
+	mkdir /var/lib/savedata
+fi
+if [ ! -d "/var/log/savedata" ]; then
+	mkdir /var/log/savedata
+fi
+
+# set permissions
+chmod 750 -R /etc/savedata
+chmod 750 -R /var/lib/savedata
+chmod 755 -R /var/log/savedata
