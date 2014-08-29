@@ -1,6 +1,7 @@
 /.project
 private
 *.pyc
-deb-build/etc
-deb-build/usr
-deb-build/var
+*.deb
+build/deb-build/etc
+build/deb-build/usr
+build/deb-build/var
