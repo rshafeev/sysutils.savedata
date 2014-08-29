@@ -188,7 +188,25 @@ def getExcludeOpts(backup):
     for excl in backup["exclude"]:
         opts += " --exclude '%s'" % excl
     return opts
-    
+
+#duplicity --full-if-older-than 1M /etc ftp://ftpuser@other.host/etc
+#duplicity remove-older-than 6M --force ftp://ftpuser@other.host/etc
+#
+#
+def remove_old_backups(backup, server_url, srcKey):
+    if not backup["period"]:
+        return
+    env_pass = "export PASSPHRASE=" + backup["passphrase"] + "; "
+    duplicity_opts = "remove-older-than %s" % backup["period"]
+    cmd = "duplicity %s %s/%s" % (duplicity_opts, server_url, srcKey)
+    output, errors =  subprocess.Popen(env_pass + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
+    if output:
+       logging.info(output)
+    if errors:
+       logging.error(errors)
+       raise Exception('Can not remove old backups. Please, check configuration file and try agan.')  
+    os.system("unset PASSPHRASE")
+
 def make_backup(conf, server_url, server_key):
     source = conf["source"]
     dest = conf["dest"]
@@ -199,6 +217,8 @@ def make_backup(conf, server_url, server_key):
         backup = backups[srcKey]
         exclude_opts = getExcludeOpts(backup)
         key_opts = ""
+        if "full" in backup:
+            key_opts += "--full-if-older-than %s " % backup["full"]
         if backup["type"] == "pgsql":
             src_path = "%s/%s" % (db_path, srcKey)
             key_opts += " --allow-source-mismatch"
@@ -220,7 +240,7 @@ def make_backup(conf, server_url, server_key):
         if errors:
            logging.error(errors)
            raise Exception('Can not create backup. Please, check configuration file and try agan.')      
-    
+        remove_old_backups(backup,server_url,srcKey)
     os.system("unset PASSPHRASE")
 
 
