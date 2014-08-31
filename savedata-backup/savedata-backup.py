@@ -5,17 +5,18 @@ import os
 import os.path
 import argparse
 import codecs
-import json
 import logging
 import shutil
 import subprocess
 import traceback
 import datetime
 import app
+import gitlab
+import pgsql
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
-m_version = "SaveData version: 0.01~beta"
+m_version = "SaveData version: 0.02~beta"
 
 #======= Global vars  =======
 env_mode = "production"
@@ -35,7 +36,6 @@ session = {
    "name"    : "{session_name}", 
    "cache"   : "gconf['work_path']/.cache",
    "spath"   : "session['cache']/{session_name}",
-   "dbpath"  : "session['spath']/db",
    "clean"   : True,
    "init"    : False,
 }
@@ -48,6 +48,7 @@ def parseConfigs(backupsfName, serversFName):
     conf   = {}
     conf["source"] = source 
     conf["dest"] = dest
+
     return conf
 
 
@@ -57,14 +58,12 @@ def createSession(gconf):
     work_path = gconf["work_path"]
     cache_path =  "%s/.cache" % work_path
     session_path = "%s/%s" % (cache_path, session_name)
-    db_path = "%s/db" % session_path
     loggingFileName = "savedata-backup-%s.log" % session_name
     session = {
         "init"    : False,
         "name"    : session_name, 
         "cache"   : cache_path,
         "spath"   : session_path,
-        "dbpath"  : db_path,
         "clean"   : True,
         "log"     : loggingFileName
     }
@@ -76,15 +75,6 @@ def createSession(gconf):
         except OSError:
             msg = "Can not create sesssion path. Please, check configuration file: %s" % env["gconf"] 
             raise Exception(msg)  
-    
-    # make db path
-    if not os.path.isdir(db_path):
-        try:
-            os.makedirs(db_path)
-        except OSError:
-            msg = "Can not create db path for saving dumps of backup-databases. Please, check configuration file: %s" % env["gconf"] 
-            raise Exception(msg)
-
     # prepare logging session
     logging_mode = gconf["logging"]["mode"]
     logging_path = gconf["logging"]["path"]
@@ -106,7 +96,7 @@ def deleteSession(session):
 
     try:
         if session["clean"] is True:
-            shutil.rmtree(session["spath"], ignore_errors=True)
+           shutil.rmtree(session["spath"], ignore_errors=True)
     except OSError:
         pass    
     session["init"] = False
@@ -145,55 +135,11 @@ def sendLogToEmail(session, status):
         raise Exception(msg)  
 
 
+def dump(conf):
+    pgsql.dump(conf)
+    gitlab.dump(conf)
 
-def dump_gitlab(conf):
-    backups = conf["source"]["backups"]
-    logging.info('create gitlab dumps...')
-    db_path = conf["session"]["dbpath"]
-    for key in backups:
-       if backups[key]["type"] == "pgsql":
-            pgsql_path ="%s/%s" % (db_path, key)
-            if not os.path.isdir(pgsql_path):
-                try:
-                    os.makedirs(pgsql_path)
-                except OSError:
-                    raise Exception("Can not create path for saving pgsql dumps. Please, check configuration file")  
-            user = backups[key]["run-as-user"]
-            dbs  = backups[key]["db"]
-            for dbName in dbs:
-                logging.info('db[%s] is dumping...', dbName)
-                dbFile = pgsql_path + "/" + dbName + ".sql"
-                cmd = "su - " + user  + " -c 'pg_dump -d " + dbName + "'>> " + dbFile
-                output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-                if errors:
-                    logging.error(errors)
-                    raise Exception('Can not create dump. Please, check configuration file and try agan.')   
-    logging.info('created pgsql dumps. OK.')
 
-def dump_dbs(conf):
-    backups = conf["source"]["backups"]
-    logging.info('create pgsql dumps...')
-
-    db_path = conf["session"]["dbpath"]
-    for key in backups:
-       if backups[key]["type"] == "pgsql":
-            pgsql_path ="%s/%s" % (db_path, key)
-            if not os.path.isdir(pgsql_path):
-                try:
-                    os.makedirs(pgsql_path)
-                except OSError:
-                    raise Exception("Can not create path for saving pgsql dumps. Please, check configuration file")  
-            user = backups[key]["run-as-user"]
-            dbs  = backups[key]["db"]
-            for dbName in dbs:
-                logging.info('db[%s] is dumping...', dbName)
-                dbFile = pgsql_path + "/" + dbName + ".sql"
-                cmd = "su - " + user  + " -c 'pg_dump -d " + dbName + "'>> " + dbFile
-                output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
-                if errors:
-                    logging.error(errors)
-                    raise Exception('Can not create dump. Please, check configuration file and try agan.')   
-    logging.info('created pgsql dumps. OK.')
 
 def rewriteBackup(server, rewrite):
     if rewrite is False:
@@ -204,12 +150,17 @@ def rewriteBackup(server, rewrite):
        except OSError:
             pass
 
-def getExcludeOpts(backup):
+def getFilterOpts(backup):
     opts = ""
-    if not "exclude" in backup:
-        return ""
-    for excl in backup["exclude"]:
-        opts += " --exclude '%s'" % excl
+    if not "filter" in backup:
+      return opts
+    filter = backup["filter"]
+    for f in filter:
+        type = f["type"]
+        patterns = f["pattern"]
+        for p in patterns:
+            opts += ' --%s "%s"' % (type, p)
+
     return opts
 
 #duplicity --full-if-older-than 1M /etc ftp://ftpuser@other.host/etc
@@ -221,7 +172,7 @@ def remove_old_backups(backup, server_url, srcKey):
         return
     env_pass = "export PASSPHRASE=" + backup["passphrase"] + "; "
     duplicity_opts = "remove-older-than %s" % backup["period"]
-    cmd = "duplicity %s %s/%s" % (duplicity_opts, server_url, srcKey)
+    cmd = "duplicity --ssl-no-check-certificate %s %s/%s" % (duplicity_opts, server_url, srcKey)
     output, errors =  subprocess.Popen(env_pass + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
     if output:
        logging.info(output)
@@ -234,17 +185,20 @@ def make_backup(conf, server_url, server_key):
     source = conf["source"]
     dest = conf["dest"]
     backups = source["backups"]
-    db_path = conf["session"]["dbpath"]
+    session = conf["session"]
     base_opts = " --ssl-no-check-certificate"
     for srcKey in backups:
         backup = backups[srcKey]
-        exclude_opts = getExcludeOpts(backup)
+        filter_opts = getFilterOpts(backup)
         key_opts = ""
         if "full" in backup:
             key_opts += "--full-if-older-than %s " % backup["full"]
-        
-        if backup["type"] == "pgsql":
-            src_path = "%s/%s" % (db_path, srcKey)
+
+        if backup["type"] == "gitlab":
+            src_path = "%s/%s" % (session["spath"], srcKey)
+            key_opts += " --allow-source-mismatch"
+        elif backup["type"] == "pgsql":
+            src_path = "%s/%s" % (session["spath"], srcKey)
             key_opts += " --allow-source-mismatch"
         elif backup["type"] == "dir":
             src_path = backup["path"]
@@ -255,7 +209,7 @@ def make_backup(conf, server_url, server_key):
         env_pass = "export PASSPHRASE=" + passphrase + "; "
 
         logging.info("backuping src[%s:%s] -> dest[%s]", srcKey, src_path, server_key)
-        duplicity_opts = " %s %s %s" % (base_opts, exclude_opts, key_opts)
+        duplicity_opts = " %s %s %s" % (base_opts, filter_opts, key_opts)
         logging.debug("duplicity opts: %s", duplicity_opts) 
         cmd = "duplicity %s %s %s/%s" % (duplicity_opts, src_path, server_url, srcKey)
         output, errors =  subprocess.Popen(env_pass + cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
@@ -299,10 +253,8 @@ def main(args):
     session = createSession(gconf)
     conf["session"] = session
 
-    # dump databases in cache directory
-    dump_dbs(conf)
-
-    dump_gitlab(conf)
+    # dump in cache directory
+    dump(conf)
 
     # backup 
     backup(conf, args.rewrite)

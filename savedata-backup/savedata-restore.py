@@ -11,11 +11,13 @@ import shutil
 import subprocess
 import traceback
 import datetime
+import tarfile
+import gitlab
 import app
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
-m_version = "SaveData version: 0.01~beta"
+m_version = "SaveData version: 0.02~beta"
 
 #======= Global vars  =======
 env_mode = "production"
@@ -50,59 +52,6 @@ def parseConfigs(serversFName):
     return conf
 
 
-
-def createSession(gconf):
-    session_name = ("%s" % datetime.datetime.now()).replace(" ", "")
-    work_path = gconf["work_path"]
-    cache_path =  "%s/.cache" % work_path
-    session_path = "%s/%s" % (cache_path, session_name)
-    db_path = "%s/db" % session_path
-    loggingFileName = "savedata-restore-%s.log" % session_name
-    session = {
-        "init"    : False,
-        "name"    : session_name, 
-        "cache"   : cache_path,
-        "spath"   : session_path,
-        "dbpath"  : db_path,
-        "clean"   : True,
-        "log"     : loggingFileName
-    }
-
-    # make session path
-    if not os.path.isdir(session_path):
-        try:
-            os.makedirs(session_path)
-        except OSError:
-            msg = "Can not create sesssion path. Please, check configuration file: %s" % env["gconf"] 
-            raise Exception(msg)  
-    
-    # prepare logging session
-    logging_mode = gconf["logging"]["mode"]
-    logging_path = gconf["logging"]["path"]
-    app.logFile(logging_mode,logging_path,session["log"], env["gconf"])
-
-    session["init"] = True
-    return session  
-
-
-def deleteSession(session):
-    if session["init"] is False:
-        return
-    try:
-        logging_path = gconf["logging"]["path"]
-        fullLogFileName = "%s/%s" % (logging_path, session["log"])
-        os.remove(fullLogFileName)
-    except OSError as e:
-        pass
-
-    try:
-        if session["clean"] is True:
-            shutil.rmtree(session["spath"], ignore_errors=True)
-    except OSError:
-        pass    
-    session["init"] = False
-    os.system("unset PASSPHRASE")
-
 def find_server(conf):
     servers = conf["dest"]["servers"]
     for destKey in servers:
@@ -116,7 +65,7 @@ def show_status(conf):
     server = find_server(conf)
     duplicity_cmd = "collection-status "
     server_url = app.buildServerURL(server)
-    cmd = "duplicity %s %s/%s" % (duplicity_cmd, server_url, conf["backup_name"])
+    cmd = "duplicity --ssl-no-check-certificate %s %s/%s" % (duplicity_cmd, server_url, conf["backup_name"])
     output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
     if output:
         logging.info(output)
@@ -124,12 +73,34 @@ def show_status(conf):
         logging.error(errors)
         raise Exception('Can not show backup-status. Please, check configuration files and input params and try agan.')  
 
+def prepareRestoryPath(restore_path):
+    if not os.path.isdir(restore_path):
+        try:
+            os.makedirs(restore_path)
+        except OSError:
+            raise Exception("Can not create path for restore data. Please, check input params")  
+
+    if len(os.listdir(restore_path)) > 0:
+        while True:
+            question = raw_input("Restore path is not empty. Do you want rewrite restore path or exit program? Y/N: ")
+            if len(question) > 0:
+                answer = question.upper()
+                if answer == "Y":
+                    try:
+                        shutil.rmtree(restore_path, ignore_errors=True)
+                        os.makedirs(restore_path)
+                    except OSError:
+                        raise Exception("Can not clean restory path")  
+                    break
+                elif answer == "N":
+                    raise Exception('Restore path is not empty.')   
+                    break
+
+
 def restore(conf, restore_path, opts):
     if not restore_path:
         return
-    if not os.path.isdir(restore_path):
-        msg = "Can not find path '%s'. Please, check configuration files and input params and try agan" % restore_path
-        raise Exception(msg)  
+    prepareRestoryPath(restore_path)
     server = find_server(conf)
     server_url = app.buildServerURL(server)
 
@@ -140,6 +111,8 @@ def restore(conf, restore_path, opts):
     if errors:
         logging.error(errors)
         raise Exception('Can not show backup-status. Please, check configuration files and input params and try agan.')    
+    gitlab.restore(restore_path)
+    
 
 def main(args):
     global gconf
@@ -188,10 +161,7 @@ def start_app():
         logging.error(e)
         logging.debug(traceback.format_exc())
         logging.warning("FAILED.")
-   
-    # delete session
-    #deleteSession(session)
-
+       
 start_app()
 
  

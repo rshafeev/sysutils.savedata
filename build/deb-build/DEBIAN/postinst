@@ -10,8 +10,12 @@ fi
 if [ -f "/usr/bin/savedata-backup" ]; then
 	rm /usr/bin/savedata-backup
 fi
+if [ -f "/usr/bin/savedata-restore" ]; then
+	rm /usr/bin/savedata-restore
+fi
 
 ln -s /usr/lib/savedata/savedata-backup.sh /usr/bin/savedata-backup
+ln -s /usr/lib/savedata/savedata-restore.sh /usr/bin/savedata-restore
 
 # make dirs
 if [ ! -d "/var/lib/savedata" ]; then

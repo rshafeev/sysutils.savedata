@@ -76,6 +76,10 @@ def prepare(debug, logFileName):
     checkWorkPath(gconf)
     return  (gconf,env,env_mode)
 
+def saveToYamlFile(filename, data):
+    with open(filename, 'w') as outfile:
+        outfile.write( yaml.dump(data, default_flow_style=False) )
+
 def parseYamlFile(filename):
     if not os.path.isfile(filename):
         raise Exception(" File '%s' not found. Please, add configuration file and try again.\nFailed.\n" % filename)

@@ -1,7 +1,4 @@
 #!/bin/bash
 
-#python savedata-backup.py $*
-
+cd /usr/lib/savedata/
 python savedata-restore.py $*
-
-#duplicity  file:////var/backups/savedata/backups/s1/pgsql /home/romario/tmp/savedata/restore

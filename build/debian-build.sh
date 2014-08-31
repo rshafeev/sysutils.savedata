@@ -9,7 +9,7 @@ DIRECTORY=`dirname "$ABSOLUTE_FILENAME"`
 echo $DIRECTORY
 
 # clear
-VERSION="0.01~beta"
+VERSION="0.02~beta"
 PACKAGE="savedata_${VERSION}_all.deb"
 cd deb-build
 rm -r usr
