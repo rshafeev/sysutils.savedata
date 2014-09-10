@@ -1,0 +1,16 @@
+
+servers:
+  local:
+      type        : 'local'
+      remote_path : '/var/backups/savedata/backups'
+
+#  bitcasa:
+#      type        : 'local'
+#      remote_path : '/var/backups/bitcasa/backups'
+#
+#  webdav:
+#      type        : 'webdavs'
+#      username    : 'username'
+#      password    : 'xxxxxxxx'
+#      host        : 'webdav.server.com'
+#      remote_path : '/backups'

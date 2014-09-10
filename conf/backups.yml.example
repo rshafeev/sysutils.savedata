@@ -1,0 +1,58 @@
+
+default:  #base alias variables
+  - &exclude # list of exclude files and directories
+         ? '**/.SyncArchive'
+         ? '**/.fuse_hidden*'
+         ? '**/.directory'
+  - &passphrase 'xxxx'
+  - &base
+      period: '1M'
+      full  : '1W'
+      passphrase: *passphrase
+
+backups:
+
+    etc:
+        type       : 'dir'
+        path       : '/etc'
+        <<         : *base
+
+#    home:
+#        type       : 'dir'
+#        path       : '/home'
+#        <<         : *base
+#        filter     :
+#              - type    : 'include'
+#                pattern :
+#                  - '/home/<username>/path'             # include folder 'path'
+#              - type    : 'exclude'
+#                pattern :
+#                    - '**/.git'
+#                    - '**/node_modules'
+#                    - '**/.class'
+#                    - '**/.jar'
+#                    - '**/target'
+#                    - '**/bin'
+#                    - '**/Release'
+#                    - '**/Debug'
+#                    - '**/.metadata'
+#
+#              - type    : 'exclude'
+#                pattern : *exclude
+#
+#    gitlab:
+#        type        : 'gitlab'
+#        run-as-user : 'git'
+#        env         : 'production'
+#        backup-path : '/var/git/gitlab/tmp/backups'
+#        home        : '/var/git/gitlab'
+#        <<          : *base
+#
+#    pgsql:
+#        type        : 'pgsql'
+#        run-as-user : 'postgres'
+#        <<          : *base
+#        db          :
+#            - 'db_name1'
+#            - 'db_name2'
+#

@@ -1,3 +1,4 @@
+
 work_path: '/var/lib/savedata'
 
 logging:
@@ -6,15 +7,13 @@ logging:
 
 #email:
 #      smtp_settings:
-#          username: 'name@example.com'
+#          username: 'from@example.com'
 #          password: 'xxx'
-#          address: 'smtp.domain.com'
+#          address: 'smtp.yandex.ru'
 #          port: 587
-#      from: 'name@example.com'
-#      to: 'destination@example.net'
+#      from: 'from@example.com'
+#      to: 'to@example.com'
 #      send_succes: true
 #      send_failed: true
-
-
 
 
