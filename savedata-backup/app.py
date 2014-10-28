@@ -160,7 +160,6 @@ def logFile(mode, loggingPath, loggingFileName, gconfFileName):
     logger.addHandler(fh)
 
 def sendEmail(smtp_settings, sender, destination, content, subject):
-    return
     SMTPserver = smtp_settings["address"]
     port = smtp_settings["port"]
     USERNAME = smtp_settings["username"]

@@ -14,12 +14,13 @@ import app
 import gitlab
 import gitbackup
 import pgsql
+import rhc
 import re
 import fnmatch
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
-m_version = "SaveData version: 0.03~beta"
+m_version = "SaveData version: 0.04~beta"
 
 #======= Global vars  =======
 env_mode = "production"
@@ -142,6 +143,7 @@ def dump(conf):
     pgsql.dump(conf)
     gitlab.dump(conf)
     gitbackup.dump(conf)
+    rhc.dump(conf)
 
 
 def rewriteBackup(server, rewrite):
@@ -204,6 +206,9 @@ def make_backup(conf, server_url, server_key):
             src_path = "%s/%s" % (session["spath"], srcKey)
             key_opts += " --allow-source-mismatch"
         elif backup["type"] == "git":
+            src_path = "%s/%s" % (session["spath"], srcKey)
+            key_opts += " --allow-source-mismatch"
+        elif backup["type"] == "rhc":
             src_path = "%s/%s" % (session["spath"], srcKey)
             key_opts += " --allow-source-mismatch"
         elif backup["type"] == "dir":

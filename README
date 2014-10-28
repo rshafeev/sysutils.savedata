@@ -15,5 +15,24 @@ bash savedata-restore.sh --server_name 's1' --backup_name 'gitreps' --status --d
 
 
 * Install
+== requires ==
 sudo apt-get install duplicity
-sudo apt-get install davfs2
+== install  == 
+sudo dpkg -i savedata_0.03~beta_all.deb
+
+
+
+## Backups ###
+
+== openshift ==
+1. At first, you must install rhc;
+2. for open rhc without password, read https://help.openshift.com/hc/en-us/articles/202399230-Running-rhc-commands-without-re-entering-password
+3. backups.yml block example:
+
+backups:
+    ....
+    rhc-apps:
+        type        : 'rhc'
+        <<          : *base
+        apps        : ['redmine', 'nexus', 'wiki']
+    ....
