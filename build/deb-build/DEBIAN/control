@@ -1,5 +1,5 @@
 Package: savedata
-Version: 0.02~beta
+Version: 0.03~beta
 Section: admin
 Architecture: all
 Depends: python (>=2.3.5-7), duplicity(>=0.6.23)

@@ -13,10 +13,12 @@ import datetime
 import app
 import gitlab
 import pgsql
+import re
+import fnmatch
 
 #======= Global constants  =======
 m_desc = "Simple backup automation utility for Linux distributive."
-m_version = "SaveData version: 0.02~beta"
+m_version = "SaveData version: 0.03~beta"
 
 #======= Global vars  =======
 env_mode = "production"
@@ -237,6 +239,45 @@ def backup(conf,rewrite):
        make_backup(conf, server_url, destKey)
 
 
+def filter_dictionary(filter_str, _dict):
+    arr = filter_str.split(',')
+    ragexes = []
+    for e in arr:
+        if len(e) <= 1 or (e[0] != 'i' and e[0] != 'e'):
+            msg = "Can not parse ragex list. Pleasem check input arguments."
+            raise Exception(msg)
+        obj = {
+          "type" : e[0],
+          "name" : e[1:]
+        } 
+        ragexes.append(obj)
+    
+    
+    ##
+    strfilter = {}
+    for name in _dict:
+        strfilter[name] = -1
+
+    ## 
+    for e in ragexes:
+        for name in strfilter:
+            if fnmatch.fnmatchcase(name, e["name"])==True and strfilter[name] == -1:
+                if e["type"] == 'i':
+                    strfilter[name] = True
+                else:
+                    strfilter[name] = False
+    for name in strfilter:
+        if  strfilter[name] == -1:
+            strfilter[name] = False
+
+    filter_dict = {}
+    
+    for name in _dict:
+        if strfilter[name] == True:
+            filter_dict[name] = _dict[name]
+
+    return filter_dict
+
 def main(args):
     global gconf
     global session
@@ -248,10 +289,13 @@ def main(args):
 
     # read and parse data from configuration file (backups.json and servers.json)
     conf = parseConfigs(args.backups_fname, args.servers_fname)
-    
     # create session
     session = createSession(gconf)
     conf["session"] = session
+    
+
+    conf["source"]["backups"] = filter_dictionary(args.backups, conf["source"]["backups"])
+    conf["dest"]["servers"] = filter_dictionary(args.servers, conf["dest"]["servers"])
 
     # dump in cache directory
     dump(conf)
@@ -266,11 +310,15 @@ def prepare_argsParser():
     argsParser = argparse.ArgumentParser(
         version=m_version, fromfile_prefix_chars='@', description=m_desc, formatter_class=argparse.RawTextHelpFormatter)
     argsParser.add_argument(
-        "-b", "--backups", dest="backups_fname", help="Configuration file  with sorce information, which you want backuping (ymal format).",
+        "-b", dest="backups_fname", help="Configuration file  with sorce information, which you want backuping (ymal format).",
         default="/etc/savedata/backups.yml", required=False)
     argsParser.add_argument(
-        "-s", "--servers", dest="servers_fname", help="Configuration file with destination settings, in which you want storage backups (ymal format).",
+        "-s", dest="servers_fname", help="Configuration file with destination settings, in which you want storage backups (ymal format).",
         default="/etc/savedata/servers.yml", required=False)
+    argsParser.add_argument(
+        "--backups", dest="backups", help="Include backup", default="[*]", required=False)
+    argsParser.add_argument(
+        "--servers", dest="servers", help="List of name servers.", default="[*]", required=False)
     argsParser.add_argument(
         "--rewrite", dest="rewrite", help="Rewrite backups in destination(use, when you want change your passphrase)", action='store_true', default=False)
     argsParser.add_argument(
