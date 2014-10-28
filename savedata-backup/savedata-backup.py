@@ -12,6 +12,7 @@ import traceback
 import datetime
 import app
 import gitlab
+import gitbackup
 import pgsql
 import re
 import fnmatch
@@ -140,7 +141,7 @@ def sendLogToEmail(session, status):
 def dump(conf):
     pgsql.dump(conf)
     gitlab.dump(conf)
-
+    gitbackup.dump(conf)
 
 
 def rewriteBackup(server, rewrite):
@@ -202,6 +203,9 @@ def make_backup(conf, server_url, server_key):
         elif backup["type"] == "pgsql":
             src_path = "%s/%s" % (session["spath"], srcKey)
             key_opts += " --allow-source-mismatch"
+        elif backup["type"] == "git":
+            src_path = "%s/%s" % (session["spath"], srcKey)
+            key_opts += " --allow-source-mismatch"
         elif backup["type"] == "dir":
             src_path = backup["path"]
         else:
@@ -237,6 +241,17 @@ def backup(conf,rewrite):
            continue
        server_url = app.buildServerURL(server)
        make_backup(conf, server_url, destKey)
+       
+       # change permissions
+       if server["type"] == "local":
+          if ("chown" in server)  and len(server["chown"]) > 0:
+              cmd = "chown %s -R %s" % (server["chown"], server["remote_path"])
+              output, errors =  subprocess.Popen(cmd,shell=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE).communicate()
+              if output:
+                  logging.info(output)
+              if errors:
+                  logging.error(errors)
+                  raise Exception('Can not change files owner(chown) in destination directory')   
 
 
 def filter_dictionary(filter_str, _dict):
@@ -316,9 +331,9 @@ def prepare_argsParser():
         "-s", dest="servers_fname", help="Configuration file with destination settings, in which you want storage backups (ymal format).",
         default="/etc/savedata/servers.yml", required=False)
     argsParser.add_argument(
-        "--backups", dest="backups", help="Include backup", default="[*]", required=False)
+        "--backups", dest="backups", help="Include backup", default="i*", required=False)
     argsParser.add_argument(
-        "--servers", dest="servers", help="List of name servers.", default="[*]", required=False)
+        "--servers", dest="servers", help="List of name servers.", default="i*", required=False)
     argsParser.add_argument(
         "--rewrite", dest="rewrite", help="Rewrite backups in destination(use, when you want change your passphrase)", action='store_true', default=False)
     argsParser.add_argument(

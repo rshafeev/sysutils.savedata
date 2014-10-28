@@ -1,0 +1,8 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+[remote "origin"]
+	url = git@code.introunion.com:iu-sysutils/sysutils.savedata.git
+	fetch = +refs/*:refs/*
+	mirror = true
