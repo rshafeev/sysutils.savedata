@@ -6,8 +6,9 @@ Simple backup automation utility for Linux distributive.
 
 ```
 #!bash
-
-sudo dpkg -i savedata_0.03~beta_all.deb
+git clone git@bitbucket.org:iu-sysutils/sysutils.savedata.git
+cd sysutils.savedata/build 
+sudo dpkg -i savedata_0.04~beta_all.deb
 ```
 
 ##Examples##
