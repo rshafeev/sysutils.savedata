@@ -17,13 +17,19 @@ sudo dpkg -i savedata_0.04~beta_all.deb
 sudo su
 
 #create backup
-bash savedata-backup -b /etc/savedata/backups.yml -s /etc/savedata/servers.yml --debug
+savedata-backup -b /etc/savedata/backups.yml -s /etc/savedata/servers.yml --debug
+
+#create backup(only to 'yandex' server)
+savedata-backup -b /etc/savedata/backups.yml      -s /etc/savedata/servers.yml --servers=i'yandex'
+
+#create backup for 'docs' (only to 'yandex' server)
+savedata-backup -b /etc/savedata/home-backups.yml -s /etc/savedata/servers.yml --servers=i'yandex' --backups=i'docs'
 
 # show status of backups
-bash savedata-restore  /etc/savedata/servers.yml --server_name 's1' --backup_name 'pgsql' --status
+savedata-restore  /etc/savedata/servers.yml --server_name 's1' --backup_name 'pgsql' --status
 
 # restore data 
-bash savedata-restore --server_name 's1' --backup_name 'gitreps' --status --debug --restore_path /home/user1/tmp/gitreps/
+savedata-restore --server_name 's1' --backup_name 'gitreps' --status --debug --restore_path /home/user1/tmp/gitreps/
 ```
 
 ##Advice##
