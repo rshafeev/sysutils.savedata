@@ -1,4 +1,4 @@
-##Description##
+==Description##
 Simple backup automation utility for Ubuntu distributive.
 
 
